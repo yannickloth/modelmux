@@ -156,8 +156,64 @@ the previous config is kept).
 | `DELETE /admin/override/<model>` | Clear a pin. |
 | `POST /admin/reload` | Force config + overrides reload. |
 
-Every response carries `x-modelmux-provider` and `x-modelmux-alias` headers
-so you can verify routing from any client.
+Every response carries `x-request-id`. Chat-completions responses also
+carry `x-modelmux-provider` and `x-modelmux-alias` so you can verify
+routing from any client.
+
+## Filters (request pipeline)
+
+Every request — OpenAI surface and admin surface — passes through a chain
+of filters before it reaches the endpoint handler, and back out through
+it. This is the servlet-`Filter` equivalent, built on axum layers
+(`src/filters.rs`).
+
+The current chain, outermost first:
+
+| Filter | What it does |
+|---|---|
+| `access_log` | One tracing line per request: method, path, status, duration. Target `modelmux.access` (silence with `RUST_LOG=modelmux.access=warn`). |
+| `request_id` | Propagate a client `x-request-id`, or generate a UUID v4. Echoed in the response; stashed in the request extensions for handlers. |
+| `DefaultBodyLimit` | Reject bodies above 64 MiB with 413. |
+
+A unit test in `filters.rs` pins the layer-ordering contract against the
+axum version in use: the **last** `.layer(...)` declared in `app()` is the
+**outermost** (runs first in the request direction, last in the response
+direction), and every layer's request and response mutations reach the
+client.
+
+To add a filter, write an async function in `src/filters.rs`:
+
+```rust
+use axum::extract::Request;
+use axum::middleware::Next;
+use axum::response::Response;
+
+async fn my_filter(req: Request, next: Next) -> Response {
+    // request direction: read or mutate headers, extensions, ...
+    let mut resp = next.run(req).await;
+    // response direction: read or mutate the response
+    resp
+}
+```
+
+and install it with one line in `app()` (`src/lib.rs`), at the position
+you want in the chain:
+
+```rust
+Router::new()
+    // ...routes...
+    .layer(middleware::from_fn(filters::my_filter))
+    .layer(middleware::from_fn(filters::access_log))
+    .with_state(state)
+```
+
+- Filters need shared state (config, counters)? Use
+  `middleware::from_fn_with_state(state.clone(), f)`; `f` then takes
+  `State<Arc<AppState>>` as its first parameter.
+- Scope a filter to part of the routes (e.g. only `/admin/*`)? Use
+  `.route_layer(...)` on the route instead of `.layer(...)` on the router.
+- Do not buffer the request body in a filter: pass `req` straight to
+  `next.run(req)` so streaming stays intact.
 
 ## Agent integration
 

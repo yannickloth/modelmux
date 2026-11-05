@@ -2,6 +2,7 @@ pub mod admin;
 pub mod anthropic;
 pub mod api;
 pub mod config;
+pub mod filters;
 pub mod router;
 pub mod sse;
 pub mod state;
@@ -12,6 +13,7 @@ pub mod usage;
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
+use axum::middleware;
 use axum::routing::{delete, get, post};
 use axum::Router;
 
@@ -35,6 +37,14 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/admin/override", post(admin::set_override))
         .route("/admin/overrides", get(admin::list_overrides))
         .route("/admin/override/{model}", delete(admin::del_override))
+        //
+        // Request filter chain (servlet-Filter equivalent): every request
+        // passes through these layers on the way in and out. The LAST
+        // .layer(...) below is the OUTERMOST (see the ordering test in
+        // filters.rs). To add a filter: write an async fn in
+        // src/filters.rs and insert one .layer(...) line here.
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
+        .layer(middleware::from_fn(filters::request_id))
+        .layer(middleware::from_fn(filters::access_log))
         .with_state(state)
 }

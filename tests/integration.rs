@@ -573,6 +573,56 @@ async fn unknown_model_uses_default_provider() {
 }
 
 #[tokio::test]
+async fn responses_carry_request_id() {
+    // No mock upstreams: /health, /v1/models and /admin/stats never leave
+    // the proxy, which is all this test needs.
+    let dir = temp_dir().await;
+    let cfg = config_template(
+        "http://127.0.0.1:1",
+        "http://127.0.0.1:1",
+        "http://127.0.0.1:1",
+        POLICIES,
+    );
+    std::fs::write(dir.join("config.toml"), &cfg).unwrap();
+    let base = start_proxy(&dir).await;
+
+    // The proxy assigns an id when the client sends none.
+    let resp = client().get(format!("{base}/health")).send().await.unwrap();
+    let id = resp
+        .headers()
+        .get("x-request-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(!id.is_empty());
+
+    // A client-supplied id is echoed back unchanged.
+    let resp = client()
+        .get(format!("{base}/v1/models"))
+        .header("x-request-id", "agent-side-id-123")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.headers()
+            .get("x-request-id")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "agent-side-id-123"
+    );
+
+    // The admin surface is covered by the chain as well.
+    let resp = client()
+        .get(format!("{base}/admin/stats"))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.headers().get("x-request-id").is_some());
+}
+
+#[tokio::test]
 async fn models_listing_and_health() {
     let dir = temp_dir().await;
     let (good_url, good_h) = spawn_mock(

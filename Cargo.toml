@@ -32,3 +32,6 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
+# tower::ServiceExt::oneshot for the layer-ordering contract test.
+# Same major as axum's own tower, so it unifies.
+tower = { version = "0.5", features = ["util"] }
