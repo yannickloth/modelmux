@@ -1,0 +1,24 @@
+# User-level systemd unit for modelmux.
+#
+# Install:
+#   cp systemd/modelmux.service ~/.config/systemd/user/
+#   # adjust ExecStart to your binary location, e.g. from `nix build`:
+#   #   ExecStart=/nix/store/<hash>-modelmux-0.1.0/bin/modelmux
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now modelmux
+#
+# API keys: put them in ~/.config/modelmux/env (KEY=VALUE lines).
+
+[Unit]
+Description=modelmux LLM routing proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/modelmux --config %h/.config/modelmux/config.toml
+EnvironmentFile=%h/.config/modelmux/env
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

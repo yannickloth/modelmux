@@ -1,0 +1,158 @@
+# modelmux configuration.
+# Copy to ~/.config/modelmux/config.toml and adjust.
+#
+# Keys are never stored here. Each provider names the environment variable
+# that holds its key (see env.example).
+
+[server]
+listen = "127.0.0.1:8787"
+# If set, requests must carry `Authorization: Bearer <this>`.
+# api_key = "change-me"
+# Append-only JSONL log of every request (tokens, cost, latency).
+usage_log = "usage.jsonl"
+# Model names that match no policy pass through to this provider unchanged.
+default_provider = "deepseek"
+# Timezone used to evaluate windows: "utc" or "local".
+window_timezone = "utc"
+# Sent to Anthropic-format providers when a client omits max_tokens.
+default_max_tokens = 8192
+
+# ---------------------------------------------------------------------------
+# Windows: named time ranges.
+#
+# DeepSeek peak pricing (official rate card, checked 2026-11-05): rates are
+# exactly 2x during 01:00-04:00 and 06:00-10:00 UTC, Monday-Friday,
+# excluding Chinese public holidays. Everything else is off-peak.
+# ---------------------------------------------------------------------------
+
+[windows.ds_peak_night]
+start = "01:00"
+end = "04:00"
+mult = 2.0
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+[windows.ds_peak_morning]
+start = "06:00"
+end = "10:00"
+mult = 2.0
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+# ---------------------------------------------------------------------------
+# Providers
+# ---------------------------------------------------------------------------
+
+# Z.ai GLM Coding Plan, OpenAI-compatible endpoint (subscription quota).
+[providers.zai]
+kind = "openai"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+api_key_env = "ZAI_CODING_API_KEY"
+
+# Same plan, Anthropic protocol (for Anthropic-format workloads).
+[providers.zai_anthropic]
+kind = "anthropic"
+base_url = "https://api.z.ai/api/anthropic"
+api_key_env = "ZAI_CODING_API_KEY"
+
+# Kimi Code (Kimi membership: Andante/Pro/Allegretto/...),
+# OpenAI-compatible endpoint.
+[providers.kimi]
+kind = "openai"
+base_url = "https://api.kimi.com/coding/v1"
+api_key_env = "KIMI_CODING_API_KEY"
+
+# DeepSeek API (pay-per-use). Peak windows cost 2x.
+[providers.deepseek]
+kind = "openai"
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+price_windows = ["ds_peak_night", "ds_peak_morning"]
+
+  # USD per 1M tokens, off-peak base (peak = base x window mult).
+  # Cache-hit input pricing is not modeled.
+  [providers.deepseek.models.deepseek-flash]
+  input_per_mtok = 0.15
+  output_per_mtok = 0.60
+
+  [providers.deepseek.models.deepseek-v4-pro]
+  input_per_mtok = 0.66
+  output_per_mtok = 1.98
+
+# Optional: the real Anthropic API.
+# [providers.anthropic]
+# kind = "anthropic"
+# base_url = "https://api.anthropic.com"
+# api_key_env = "ANTHROPIC_API_KEY"
+
+# Local servers (OpenAI-compatible). Adjust base_url and keys.
+[providers.strata]
+kind = "openai"
+base_url = "http://127.0.0.1:8300/v1"
+# api_key_env = "STRATA_API_KEY"
+
+[providers.unsloth]
+kind = "openai"
+base_url = "http://127.0.0.1:8400/v1"
+# api_key_env = "UNSLOTH_API_KEY"
+
+# ---------------------------------------------------------------------------
+# Policies: inbound model name (what your agents send) -> ordered candidates.
+# The first candidate whose window conditions pass is tried. On transport
+# errors, 429 and 5xx, modelmux falls to the next candidate.
+# ---------------------------------------------------------------------------
+
+# Your default coding model: Z.ai subscription first (zero marginal cost),
+# Kimi as overflow, local Strata as last resort.
+[policies."glm-5.3-flash"]
+candidates = [
+  { provider = "zai", model = "glm-5.3-flash" },
+  { provider = "kimi", model = "kimi-for-coding" },
+  # { provider = "strata", model = "your-local-model-id" },
+]
+
+[policies."glm-5.3"]
+candidates = [
+  { provider = "zai", model = "glm-5.3" },
+  { provider = "kimi", model = "k3" },
+]
+
+# DeepSeek aliases: pay the API only off-peak, otherwise fall back to
+# GLM on the subscription.
+[policies."deepseek-chat"]
+candidates = [
+  { provider = "deepseek", model = "deepseek-flash", avoid_windows = ["ds_peak_night", "ds_peak_morning"] },
+  { provider = "zai", model = "glm-5.3-flash" },
+]
+
+[policies."deepseek-reasoner"]
+candidates = [
+  { provider = "deepseek", model = "deepseek-v4-pro", avoid_windows = ["ds_peak_night", "ds_peak_morning"] },
+  { provider = "zai", model = "glm-5.3" },
+]
+
+[policies."deepseek-v4-pro"]
+candidates = [
+  { provider = "deepseek", model = "deepseek-v4-pro" },
+]
+
+# Kimi aliases.
+[policies."kimi-for-coding"]
+candidates = [
+  { provider = "kimi", model = "kimi-for-coding" },
+  { provider = "zai", model = "glm-5.3-flash" },
+]
+
+[policies."kimi-for-coding-highspeed"]
+candidates = [
+  { provider = "kimi", model = "kimi-for-coding-highspeed" },
+]
+
+[policies."k3"]
+candidates = [
+  { provider = "kimi", model = "k3" },
+  { provider = "zai", model = "glm-5.3" },
+]
+
+[policies."k3-256k"]
+candidates = [
+  { provider = "kimi", model = "k3-256k" },
+]
