@@ -16,7 +16,7 @@ use crate::state::{save_overrides, AppState};
 use crate::time_windows::now_minutes;
 
 /// GET /admin/routes — what each alias resolves to right now.
-pub async fn routes(State(state): State<Arc<AppState>>) -> Response {
+pub(crate) async fn routes(State(state): State<Arc<AppState>>) -> Response {
     state.maybe_reload().await;
     let cfg = state.cfg.read().await.clone();
     let overrides = state.overrides.read().await.clone();
@@ -70,12 +70,12 @@ pub async fn routes(State(state): State<Arc<AppState>>) -> Response {
 }
 
 /// GET /admin/stats — token and cost counters since start.
-pub async fn stats(State(state): State<Arc<AppState>>) -> Response {
+pub(crate) async fn stats(State(state): State<Arc<AppState>>) -> Response {
     json_ok(state.usage.snapshot())
 }
 
 /// POST /admin/reload — force reload of config and overrides.
-pub async fn reload(State(state): State<Arc<AppState>>) -> Response {
+pub(crate) async fn reload(State(state): State<Arc<AppState>>) -> Response {
     match state.force_reload().await {
         Ok(msg) => json_ok(json!({ "ok": true, "message": msg })),
         Err(e) => json_err(StatusCode::BAD_REQUEST, &e),
@@ -83,7 +83,7 @@ pub async fn reload(State(state): State<Arc<AppState>>) -> Response {
 }
 
 #[derive(Deserialize)]
-struct OverrideBody {
+pub(crate) struct OverrideBody {
     /// Inbound model alias to pin.
     model: String,
     /// Provider to route it to.
@@ -95,7 +95,7 @@ struct OverrideBody {
 /// PUT /admin/override — pin an alias to a provider (persisted).
 /// Example: `{"model": "deepseek-chat", "provider": "strata", "model_id": "qwen3-32b"}`
 /// switches one workload to a local model without touching agent files.
-pub async fn set_override(
+pub(crate) async fn set_override(
     State(state): State<Arc<AppState>>,
     Json(body): Json<OverrideBody>,
 ) -> Response {
@@ -133,7 +133,7 @@ pub async fn set_override(
 }
 
 /// DELETE /admin/override/:model — clear an override.
-pub async fn del_override(
+pub(crate) async fn del_override(
     State(state): State<Arc<AppState>>,
     Path(model): Path<String>,
 ) -> Response {
@@ -158,7 +158,7 @@ pub async fn del_override(
 }
 
 /// GET /admin/overrides — current persisted overrides.
-pub async fn list_overrides(State(state): State<Arc<AppState>>) -> Response {
+pub(crate) async fn list_overrides(State(state): State<Arc<AppState>>) -> Response {
     let map = state.overrides.read().await;
     let obj = serde_json::to_value(&*map).unwrap_or(Value::Null);
     json_ok(obj)

@@ -167,8 +167,8 @@ pub struct OverrideEntry {
 
 impl Config {
     pub fn load(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let cfg: Config =
             toml::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
         cfg.validate()?;
@@ -179,14 +179,22 @@ impl Config {
         let mut errs: Vec<String> = vec![];
         for (name, w) in &self.windows {
             if parse_hhmm(&w.start).is_none() {
-                errs.push(format!("window '{name}' has invalid start '{}', want HH:MM", w.start));
+                errs.push(format!(
+                    "window '{name}' has invalid start '{}', want HH:MM",
+                    w.start
+                ));
             }
             if parse_hhmm(&w.end).is_none() {
-                errs.push(format!("window '{name}' has invalid end '{}', want HH:MM", w.end));
+                errs.push(format!(
+                    "window '{name}' has invalid end '{}', want HH:MM",
+                    w.end
+                ));
             }
             for d in &w.days {
                 if !is_day_name(d) {
-                    errs.push(format!("window '{name}' has invalid day '{d}', want Mon..Sun"));
+                    errs.push(format!(
+                        "window '{name}' has invalid day '{d}', want Mon..Sun"
+                    ));
                 }
             }
         }
@@ -198,7 +206,9 @@ impl Config {
         }
         if let Some(dp) = &self.server.default_provider {
             if !self.providers.contains_key(dp) {
-                errs.push(format!("server.default_provider '{dp}' is not in providers"));
+                errs.push(format!(
+                    "server.default_provider '{dp}' is not in providers"
+                ));
             }
         }
         for (name, p) in &self.providers {
@@ -223,9 +233,7 @@ impl Config {
                 }
                 for w in c.avoid_windows.iter().chain(c.only_windows.iter()) {
                     if !self.windows.contains_key(w) {
-                        errs.push(format!(
-                            "policy '{alias}' references unknown window '{w}'"
-                        ));
+                        errs.push(format!("policy '{alias}' references unknown window '{w}'"));
                     }
                 }
             }

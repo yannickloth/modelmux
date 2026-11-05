@@ -34,7 +34,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/admin/reload", post(admin::reload))
         .route("/admin/override", post(admin::set_override))
         .route("/admin/overrides", get(admin::list_overrides))
-        .route("/admin/override/:model", delete(admin::del_override))
+        .route("/admin/override/{model}", delete(admin::del_override))
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .with_state(state)
 }

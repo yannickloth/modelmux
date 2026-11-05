@@ -1,4 +1,4 @@
-use chrono::{Datelike, Local, Utc};
+use chrono::{Datelike, Local, Timelike, Utc};
 
 use crate::config::WindowCfg;
 
@@ -23,7 +23,7 @@ fn now_in(tz: &str) -> chrono::DateTime<chrono::FixedOffset> {
 
 /// Current time as minutes since midnight in the configured timezone.
 pub fn now_minutes(tz: &str) -> u32 {
-    now_in(tz).time().num_minutes_from_midnight()
+    now_in(tz).time().num_seconds_from_midnight() / 60
 }
 
 /// Current ISO weekday: 1 = Monday .. 7 = Sunday.
@@ -145,17 +145,19 @@ mod tests {
 
     #[test]
     fn weekday_filter() {
-        let monday = w("00:00", "23:59", vec!["Mon"]);
-        // Monday 12:00
-        assert!(window_active_at(&monday, "utc", 720));
-        // Saturday 12:00 — same minute, different day
-        let saturday = w("00:00", "23:59", vec!["Sat"]);
-        // window_active_at cannot pick an arbitrary date; it uses the real
-        // weekday. Instead verify day_matches directly.
+        // day_matches is deterministic; window_active_at with a day filter
+        // depends on the real clock, so it is covered via the range + day
+        // primitives here.
         assert!(day_matches("Monday", 1));
+        assert!(day_matches("mon", 1));
         assert!(day_matches("sat", 6));
+        assert!(day_matches("Sun", 7));
         assert!(!day_matches("Sat", 1));
-        assert!(!monday.days.is_empty() || saturday.days.is_empty());
+        assert!(!day_matches("Mon", 2));
+        // range check for a full-day window at 12:00
+        let monday = w("00:00", "23:59", vec!["Mon"]);
+        assert!(range_contains(0, 1439, 720));
+        assert!(!monday.days.is_empty());
     }
 
     #[test]

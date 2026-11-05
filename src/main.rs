@@ -20,7 +20,11 @@ async fn main() -> anyhow::Result<()> {
 
     let config_path = resolve_config_path(&args)?;
     tracing::info!(path = %config_path.display(), "loading config");
-    let state = Arc::new(AppState::new(config_path).await?);
+    let state = Arc::new(
+        AppState::new(config_path)
+            .await
+            .map_err(anyhow::Error::msg)?,
+    );
 
     let listen = state.cfg.read().await.server.listen.clone();
     let listener = tokio::net::TcpListener::bind(&listen).await?;
@@ -45,7 +49,7 @@ fn resolve_config_path(args: &[String]) -> anyhow::Result<PathBuf> {
         if p.is_file() {
             return Ok(p);
         }
-        anyhow::bail!("MODELMUX_CONFIG points to a missing file: {p}");
+        anyhow::bail!("MODELMUX_CONFIG points to a missing file: {}", p.display());
     }
     for name in ["modelmux.toml", "config.toml"] {
         let p = PathBuf::from(name);

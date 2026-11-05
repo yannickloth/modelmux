@@ -15,8 +15,8 @@ pub struct AppState {
     pub overrides: RwLock<HashMap<String, OverrideEntry>>,
     pub config_path: PathBuf,
     pub overrides_path: PathBuf,
-    cfg_mtime: Mutex<Option<SystemTime>>,
-    ov_mtime: Mutex<Option<SystemTime>>,
+    pub(crate) cfg_mtime: Mutex<Option<SystemTime>>,
+    pub(crate) ov_mtime: Mutex<Option<SystemTime>>,
     pub client: reqwest::Client,
     pub usage: Usage,
 }
@@ -28,10 +28,7 @@ pub fn load_overrides(path: &Path) -> HashMap<String, OverrideEntry> {
     }
 }
 
-pub fn save_overrides(
-    path: &Path,
-    ov: &HashMap<String, OverrideEntry>,
-) -> Result<(), String> {
+pub fn save_overrides(path: &Path, ov: &HashMap<String, OverrideEntry>) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -44,16 +41,12 @@ pub fn save_overrides(
 impl AppState {
     pub async fn new(config_path: PathBuf) -> Result<Self, String> {
         let cfg = Config::load(&config_path)?;
-        let overrides_path = cfg
-            .server
-            .overrides_path
-            .clone()
-            .unwrap_or_else(|| {
-                config_path
-                    .parent()
-                    .map(|p| p.join("overrides.json"))
-                    .unwrap_or_else(|| PathBuf::from("overrides.json"))
-            });
+        let overrides_path = cfg.server.overrides_path.clone().unwrap_or_else(|| {
+            config_path
+                .parent()
+                .map(|p| p.join("overrides.json"))
+                .unwrap_or_else(|| PathBuf::from("overrides.json"))
+        });
         let overrides = load_overrides(&overrides_path);
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(5))
@@ -85,12 +78,7 @@ impl AppState {
     /// the previous one is kept.
     pub async fn maybe_reload(&self) {
         if let Ok(m) = std::fs::metadata(&self.config_path).and_then(|m| m.modified()) {
-            if self
-                .cfg_mtime
-                .lock()
-                .unwrap()
-                .map_or(true, |last| m > last)
-            {
+            if self.cfg_mtime.lock().unwrap().is_none_or(|last| m > last) {
                 match Config::load(&self.config_path) {
                     Ok(cfg) => {
                         tracing::info!(
@@ -107,12 +95,7 @@ impl AppState {
             }
         }
         if let Ok(m) = std::fs::metadata(&self.overrides_path).and_then(|m| m.modified()) {
-            if self
-                .ov_mtime
-                .lock()
-                .unwrap()
-                .map_or(true, |last| m > last)
-            {
+            if self.ov_mtime.lock().unwrap().is_none_or(|last| m > last) {
                 let ov = load_overrides(&self.overrides_path);
                 *self.overrides.write().await = ov;
                 *self.ov_mtime.lock().unwrap() = Some(m);

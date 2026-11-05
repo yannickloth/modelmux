@@ -142,10 +142,10 @@ pub async fn chat_completions(
                     return stream_response(
                         state,
                         cfg,
-                        cand,
+                        cand.clone(),
                         resp,
                         resp_ct,
-                        alias,
+                        alias.clone(),
                         include_usage,
                         i + 1,
                         started,
@@ -154,10 +154,10 @@ pub async fn chat_completions(
                 return nonstream_response(
                     state,
                     cfg,
-                    cand,
+                    cand.clone(),
                     resp,
                     resp_ct,
-                    alias,
+                    alias.clone(),
                     i + 1,
                     started,
                 )
@@ -212,6 +212,7 @@ pub async fn chat_completions(
     json_err(StatusCode::BAD_GATEWAY, &msg)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn nonstream_response(
     state: Arc<AppState>,
     cfg: Config,
@@ -233,7 +234,14 @@ async fn nonstream_response(
     let (pt, ct) = sse::openai_usage(&text)
         .map(|(a, b)| (Some(a), Some(b)))
         .unwrap_or((None, None));
-    let cost = cost_usd(&cfg, &cand.provider, &cand.model, pt, ct, &cfg.server.window_timezone);
+    let cost = cost_usd(
+        &cfg,
+        &cand.provider,
+        &cand.model,
+        pt,
+        ct,
+        &cfg.server.window_timezone,
+    );
     state.usage.record(&Record {
         alias: alias.clone(),
         provider: cand.provider.clone(),
@@ -252,7 +260,7 @@ async fn nonstream_response(
     b = b.header(
         header::CONTENT_TYPE,
         if is_anthropic {
-            "application/json"
+            "application/json".to_string()
         } else {
             resp_ct.unwrap_or_else(|| "application/json".to_string())
         },
@@ -270,6 +278,7 @@ async fn nonstream_response(
     .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn stream_response(
     state: Arc<AppState>,
     cfg: Config,
@@ -289,6 +298,8 @@ fn stream_response(
     let provider = cand.provider.clone();
     let model = cand.model.clone();
     let tz = cfg.server.window_timezone.clone();
+    let provider_hdr = provider.clone();
+    let alias_hdr = alias.clone();
 
     let stream = async_stream::stream! {
         let mut parser = SseParser::new();
@@ -355,8 +366,8 @@ fn stream_response(
         resp_ct.unwrap_or_else(|| "text/event-stream".to_string()),
     );
     b = b.header("cache-control", "no-cache");
-    b = b.header("x-modelmux-provider", provider.as_str());
-    b = b.header("x-modelmux-alias", alias.as_str());
+    b = b.header("x-modelmux-provider", provider_hdr.as_str());
+    b = b.header("x-modelmux-alias", alias_hdr.as_str());
     b.body(Body::from_stream(stream))
         .unwrap_or_else(|_| Response::new(Body::empty()))
 }

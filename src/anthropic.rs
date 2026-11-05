@@ -51,7 +51,9 @@ pub fn translate_request(body: &Value, default_max_tokens: u64) -> Result<Value,
                             .cloned()
                             .unwrap_or(Value::Null);
                         let input = match &raw_args {
-                            Value::String(s) => serde_json::from_str(s).unwrap_or_else(|_| json!({})),
+                            Value::String(s) => {
+                                serde_json::from_str(s).unwrap_or_else(|_| json!({}))
+                            }
                             Value::Null => json!({}),
                             other => other.clone(),
                         };
@@ -154,7 +156,8 @@ pub fn translate_request(body: &Value, default_max_tokens: u64) -> Result<Value,
             Value::Object(o) => {
                 if o.get("type").and_then(|v| v.as_str()) == Some("function") {
                     let name = o
-                        .pointer("/function/name")
+                        .get("function")
+                        .and_then(|f| f.get("name"))
                         .cloned()
                         .unwrap_or(Value::String(String::new()));
                     json!({ "type": "tool", "name": name })
@@ -187,7 +190,10 @@ pub fn translate_response(v: &Value, alias: &str) -> Value {
                     let input = b.get("input").cloned().unwrap_or_else(|| json!({}));
                     let args = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
                     let tid = b.get("id").cloned().unwrap_or_else(|| json!("toolu_0"));
-                    let name = b.get("name").cloned().unwrap_or(Value::String(String::new()));
+                    let name = b
+                        .get("name")
+                        .cloned()
+                        .unwrap_or(Value::String(String::new()));
                     tool_calls.push(json!({
                         "index": tool_calls.len(),
                         "id": tid,
@@ -202,12 +208,14 @@ pub fn translate_response(v: &Value, alias: &str) -> Value {
     let finish = finish_reason(v.get("stop_reason").and_then(|x| x.as_str()));
     let usage = v.get("usage");
     let prompt_tokens = usage
-        .and_then(|u| {
-            Some(
-                u.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0)
-                    + u.get("cache_read_input_tokens").and_then(|x| x.as_u64()).unwrap_or(0)
-                    + u.get("cache_creation_input_tokens").and_then(|x| x.as_u64()).unwrap_or(0),
-            )
+        .map(|u| {
+            u.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0)
+                + u.get("cache_read_input_tokens")
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0)
+                + u.get("cache_creation_input_tokens")
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0)
         })
         .unwrap_or(0);
     let completion_tokens = usage
@@ -416,12 +424,10 @@ impl StreamTlx {
                     .pointer("/message/usage/input_tokens")
                     .and_then(|x| x.as_u64())
                     .unwrap_or(0)
-                    + v
-                        .pointer("/message/usage/cache_read_input_tokens")
+                    + v.pointer("/message/usage/cache_read_input_tokens")
                         .and_then(|x| x.as_u64())
                         .unwrap_or(0)
-                    + v
-                        .pointer("/message/usage/cache_creation_input_tokens")
+                    + v.pointer("/message/usage/cache_creation_input_tokens")
                         .and_then(|x| x.as_u64())
                         .unwrap_or(0);
                 self.ensure_start(out);
@@ -581,7 +587,10 @@ mod tests {
         let out = translate_request(&body, 100).unwrap();
         assert_eq!(out["tools"][0]["name"], "get_weather");
         assert_eq!(out["tools"][0]["input_schema"]["type"], "object");
-        assert_eq!(out["tool_choice"], json!({ "type": "tool", "name": "get_weather" }));
+        assert_eq!(
+            out["tool_choice"],
+            json!({ "type": "tool", "name": "get_weather" })
+        );
         assert_eq!(out["stop_sequences"], json!(["END"]));
     }
 
@@ -604,12 +613,15 @@ mod tests {
             ],
         });
         let out = translate_request(&body, 100).unwrap();
-        let assistant = &out["messages"][0];
+        let assistant = &out["messages"][1];
         assert_eq!(assistant["role"], "assistant");
         assert_eq!(assistant["content"][0]["type"], "tool_use");
         assert_eq!(assistant["content"][0]["id"], "call_1");
-        assert_eq!(assistant["content"][0]["input"], json!({ "city": "Brussels" }));
-        let tool = &out["messages"][1];
+        assert_eq!(
+            assistant["content"][0]["input"],
+            json!({ "city": "Brussels" })
+        );
+        let tool = &out["messages"][2];
         assert_eq!(tool["role"], "user");
         assert_eq!(tool["content"][0]["type"], "tool_result");
         assert_eq!(tool["content"][0]["tool_use_id"], "call_1");
@@ -653,37 +665,74 @@ mod tests {
         let mut tlx = StreamTlx::new("k3", true);
         let mut out: Vec<String> = vec![];
         let events = [
-            ("message_start", r#"{"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":11,"cache_read_input_tokens":3}}}"#),
-            ("content_block_start", r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#),
+            (
+                "message_start",
+                r#"{"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":11,"cache_read_input_tokens":3}}}"#,
+            ),
+            (
+                "content_block_start",
+                r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+            ),
             ("ping", r#"{"type":"ping"}"#),
-            ("content_block_delta", r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}"#),
-            ("content_block_delta", r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}"#),
-            ("content_block_stop", r#"{"type":"content_block_stop","index":0}"#),
-            ("content_block_start", r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_9","name":"search","input":{}}}"#),
-            ("content_block_delta", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"q\":"}}"#),
-            ("content_block_delta", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"nick\"}"}}"#),
-            ("content_block_stop", r#"{"type":"content_block_stop","index":1}"#),
-            ("message_delta", r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}"#),
+            (
+                "content_block_delta",
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}"#,
+            ),
+            (
+                "content_block_delta",
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}"#,
+            ),
+            (
+                "content_block_stop",
+                r#"{"type":"content_block_stop","index":0}"#,
+            ),
+            (
+                "content_block_start",
+                r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_9","name":"search","input":{}}}"#,
+            ),
+            (
+                "content_block_delta",
+                r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"q\":"}}"#,
+            ),
+            (
+                "content_block_delta",
+                r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"nick\"}"}}"#,
+            ),
+            (
+                "content_block_stop",
+                r#"{"type":"content_block_stop","index":1}"#,
+            ),
+            (
+                "message_delta",
+                r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}"#,
+            ),
             ("message_stop", r#"{"type":"message_stop"}"#),
         ];
         for (name, data) in events {
-            tlx.on_event(&SseEvent { event: Some(name.into()), data: data.into() }, &mut out);
+            tlx.on_event(
+                &SseEvent {
+                    event: Some(name.into()),
+                    data: data.into(),
+                },
+                &mut out,
+            );
         }
         let stream = out.join("");
         assert!(stream.contains("\"content\":\"Hel\""));
         assert!(stream.contains("\"content\":\"lo\""));
         assert!(stream.contains("\"id\":\"toolu_9\""));
         assert!(stream.contains("\"name\":\"search\""));
-        assert!(stream.contains("\"reason\"")); // finish chunk
+        assert!(stream.contains("\"finish_reason\":\"tool_calls\""));
         assert!(stream.contains("data: [DONE]"));
 
         // Reassemble the tool call arguments from the delta frames.
         let mut args = String::new();
-        for frame in out {
+        for frame in &out {
             if let Some(payload) = frame.strip_prefix("data: ").map(|s| s.trim()) {
                 if let Ok(v) = serde_json::from_str::<Value>(payload) {
                     if let Some(tc) = v.pointer("/choices/0/delta/tool_calls/0") {
-                        if let Some(a) = tc.pointer("/function/arguments").and_then(|x| x.as_str()) {
+                        if let Some(a) = tc.pointer("/function/arguments").and_then(|x| x.as_str())
+                        {
                             args.push_str(a);
                         }
                     }
@@ -713,7 +762,9 @@ mod tests {
         tlx.on_event(
             &SseEvent {
                 event: Some("error".into()),
-                data: r#"{"type":"error","error":{"type":"overloaded_error","message":"try again"}}"#.into(),
+                data:
+                    r#"{"type":"error","error":{"type":"overloaded_error","message":"try again"}}"#
+                        .into(),
             },
             &mut out,
         );

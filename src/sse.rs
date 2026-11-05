@@ -77,7 +77,10 @@ pub fn openai_usage(data: &str) -> Option<(u64, u64)> {
     let v: Value = serde_json::from_str(data).ok()?;
     let u = v.get("usage")?;
     let pt = u.get("prompt_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
-    let ct = u.get("completion_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+    let ct = u
+        .get("completion_tokens")
+        .and_then(|x| x.as_u64())
+        .unwrap_or(0);
     Some((pt, ct))
 }
 

@@ -53,7 +53,7 @@ impl Usage {
             let mut map = self.stats.lock().unwrap();
             let agg = map
                 .entry((r.alias.clone(), r.provider.clone()))
-                .or_insert_with(Agg::default);
+                .or_default();
             agg.requests += 1;
             if r.status >= 400 || r.error.is_some() {
                 agg.errors += 1;

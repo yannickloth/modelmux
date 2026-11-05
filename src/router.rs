@@ -23,10 +23,9 @@ pub fn candidate_active(cfg: &Config, c: &CandidateCfg, tz: &str, now_min: u32) 
         }
     }
     if !c.only_windows.is_empty() {
-        let any = c
-            .only_windows
-            .iter()
-            .any(|name| matches!(cfg.windows.get(name), Some(w) if window_active_at(w, tz, now_min)));
+        let any = c.only_windows.iter().any(
+            |name| matches!(cfg.windows.get(name), Some(w) if window_active_at(w, tz, now_min)),
+        );
         if !any {
             return false;
         }
@@ -113,7 +112,7 @@ pub fn resolve(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AuthStyle, ModelPrice, PolicyCfg, ProviderKind};
+    use crate::config::{AuthStyle, PolicyCfg, ProviderKind};
     use std::collections::HashMap;
 
     fn provider(kind: ProviderKind) -> ProviderCfg {
@@ -128,10 +127,7 @@ mod tests {
         }
     }
 
-    fn cfg_with(
-        windows: HashMap<String, crate::config::WindowCfg>,
-        pol: PolicyCfg,
-    ) -> Config {
+    fn cfg_with(windows: HashMap<String, crate::config::WindowCfg>, pol: PolicyCfg) -> Config {
         let mut providers: HashMap<String, ProviderCfg> = HashMap::new();
         providers.insert("a".into(), provider(ProviderKind::Openai));
         providers.insert("b".into(), provider(ProviderKind::Openai));
@@ -231,10 +227,7 @@ mod tests {
 
     #[test]
     fn default_provider_for_unknown_alias() {
-        let mut cfg = cfg_with(
-            HashMap::new(),
-            PolicyCfg { candidates: vec![] },
-        );
+        let mut cfg = cfg_with(HashMap::new(), PolicyCfg { candidates: vec![] });
         cfg.server.default_provider = Some("a".into());
         // Empty-candidate policy is invalid in real configs, but resolve()
         // only reads; it must still fall through to the default provider.

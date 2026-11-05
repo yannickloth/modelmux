@@ -2,7 +2,7 @@
 
 use axum::http::{header, HeaderValue, StatusCode};
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::config::{AuthStyle, ProviderCfg, ProviderKind};
 

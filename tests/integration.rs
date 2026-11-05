@@ -17,10 +17,7 @@ struct MockState {
     seen_models: std::sync::Mutex<Vec<String>>,
 }
 
-async fn echo_handler(
-    State(state): State<Arc<MockState>>,
-    Json(body): Json<Value>,
-) -> Json<Value> {
+async fn echo_handler(State(state): State<Arc<MockState>>, Json(body): Json<Value>) -> Json<Value> {
     let model = body["model"].as_str().unwrap_or("").to_string();
     state.seen_models.lock().unwrap().push(model.clone());
     Json(json!({
@@ -47,7 +44,7 @@ data: [DONE]
 
 "#;
 
-fn openai_sse_handler() -> Response {
+async fn openai_sse_handler() -> Response {
     Response::builder()
         .status(200)
         .header("content-type", "text/event-stream")
@@ -143,19 +140,9 @@ async fn spawn_mock(route: axum::Router) -> (String, tokio::task::JoinHandle<()>
 // Proxy under test
 // ---------------------------------------------------------------------------
 
-fn write_config(dir: &std::path::Path, text: &str) -> std::path::PathBuf {
-    let p = dir.join("config.toml");
-    std::fs::write(&p, text).unwrap();
-    p
-}
-
 async fn start_proxy(dir: &std::path::Path) -> String {
     let cfg_path = dir.join("config.toml");
-    let state = Arc::new(
-        modelmux::state::AppState::new(cfg_path)
-            .await
-            .unwrap(),
-    );
+    let state = Arc::new(modelmux::state::AppState::new(cfg_path).await.unwrap());
     let app = modelmux::app(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -261,13 +248,10 @@ async fn failover_on_500_and_model_rewrite() {
             })),
     )
     .await;
-    let (bad_url, bad_h) = spawn_mock(Router::new().route("/chat/completions", post(fail_handler)))
-        .await;
-    let (_anth_url, anth_h) = spawn_mock(
-        Router::new()
-            .route("/v1/messages", post(anthropic_json_handler)),
-    )
-    .await;
+    let (bad_url, bad_h) =
+        spawn_mock(Router::new().route("/chat/completions", post(fail_handler))).await;
+    let (anth_url, anth_h) =
+        spawn_mock(Router::new().route("/v1/messages", post(anthropic_json_handler))).await;
     let cfg = config_template(&good_url, &bad_url, &anth_url, POLICIES);
     std::fs::write(dir.join("config.toml"), &cfg).unwrap();
     let base = start_proxy(&dir).await;
@@ -301,13 +285,10 @@ async fn avoid_window_skips_candidate() {
             })),
     )
     .await;
-    let (bad_url, bad_h) = spawn_mock(Router::new().route("/chat/completions", post(fail_handler)))
-        .await;
-    let (anth_url, anth_h) = spawn_mock(
-        Router::new()
-            .route("/v1/messages", post(anthropic_json_handler)),
-    )
-    .await;
+    let (bad_url, bad_h) =
+        spawn_mock(Router::new().route("/chat/completions", post(fail_handler))).await;
+    let (anth_url, anth_h) =
+        spawn_mock(Router::new().route("/v1/messages", post(anthropic_json_handler))).await;
     let cfg = config_template(&good_url, &bad_url, &anth_url, POLICIES);
     std::fs::write(dir.join("config.toml"), &cfg).unwrap();
     let base = start_proxy(&dir).await;
@@ -339,13 +320,10 @@ async fn anthropic_nonstream_translation() {
             })),
     )
     .await;
-    let (bad_url, bad_h) = spawn_mock(Router::new().route("/chat/completions", post(fail_handler)))
-        .await;
-    let (anth_url, anth_h) = spawn_mock(
-        Router::new()
-            .route("/v1/messages", post(anthropic_json_handler)),
-    )
-    .await;
+    let (bad_url, bad_h) =
+        spawn_mock(Router::new().route("/chat/completions", post(fail_handler))).await;
+    let (anth_url, anth_h) =
+        spawn_mock(Router::new().route("/v1/messages", post(anthropic_json_handler))).await;
     let cfg = config_template(&good_url, &bad_url, &anth_url, POLICIES);
     std::fs::write(dir.join("config.toml"), &cfg).unwrap();
     let base = start_proxy(&dir).await;
@@ -362,11 +340,17 @@ async fn anthropic_nonstream_translation() {
     assert_eq!(v["object"], "chat.completion");
     assert_eq!(v["model"], "anth-alias");
     assert_eq!(v["choices"][0]["finish_reason"], "tool_calls");
-    assert_eq!(v["choices"][0]["message"]["content"], "Checking the weather.");
+    assert_eq!(
+        v["choices"][0]["message"]["content"],
+        "Checking the weather."
+    );
     let tc = &v["choices"][0]["message"]["tool_calls"][0];
     assert_eq!(tc["id"], "toolu_1");
     assert_eq!(tc["function"]["name"], "get_weather");
-    assert!(tc["function"]["arguments"].as_str().unwrap().contains("Brussels"));
+    assert!(tc["function"]["arguments"]
+        .as_str()
+        .unwrap()
+        .contains("Brussels"));
     assert_eq!(v["usage"]["prompt_tokens"], 12);
     assert_eq!(v["usage"]["completion_tokens"], 7);
 
@@ -386,22 +370,23 @@ async fn anthropic_stream_translation() {
             })),
     )
     .await;
-    let (bad_url, bad_h) = spawn_mock(Router::new().route("/chat/completions", post(fail_handler)))
-        .await;
-    let (anth_url, anth_h) = spawn_mock(
-        Router::new().route("/v1/messages", post(anthropic_sse_handler)),
-    )
-    .await;
+    let (bad_url, bad_h) =
+        spawn_mock(Router::new().route("/chat/completions", post(fail_handler))).await;
+    let (anth_url, anth_h) =
+        spawn_mock(Router::new().route("/v1/messages", post(anthropic_sse_handler))).await;
     let cfg = config_template(&good_url, &bad_url, &anth_url, POLICIES);
     std::fs::write(dir.join("config.toml"), &cfg).unwrap();
     let base = start_proxy(&dir).await;
 
     let resp = client()
         .post(format!("{base}/v1/chat/completions"))
-        .json(&chat_req("anth-alias", json!({
-            "stream": true,
-            "stream_options": { "include_usage": true },
-        })))
+        .json(&chat_req(
+            "anth-alias",
+            json!({
+                "stream": true,
+                "stream_options": { "include_usage": true },
+            }),
+        ))
         .send()
         .await
         .unwrap();
@@ -419,7 +404,9 @@ async fn anthropic_stream_translation() {
     // Reassemble tool call arguments from the delta frames.
     let mut args = String::new();
     for line in text.lines() {
-        let Some(payload) = line.strip_prefix("data: ") else { continue };
+        let Some(payload) = line.strip_prefix("data: ") else {
+            continue;
+        };
         let Ok(v) = serde_json::from_str::<Value>(payload.trim()) else {
             continue;
         };
@@ -440,16 +427,12 @@ async fn anthropic_stream_translation() {
 async fn openai_stream_passthrough_is_byte_identical() {
     let dir = temp_dir().await;
     // "good" returns the SSE stream for openai-sse alias (first candidate).
-    let good_app = Router::new()
-        .route("/chat/completions", post(openai_sse_handler));
+    let good_app = Router::new().route("/chat/completions", post(openai_sse_handler));
     let (good_url, good_h) = spawn_mock(good_app).await;
-    let (bad_url, bad_h) = spawn_mock(Router::new().route("/chat/completions", post(fail_handler)))
-        .await;
-    let (anth_url, anth_h) = spawn_mock(
-        Router::new()
-            .route("/v1/messages", post(anthropic_json_handler)),
-    )
-    .await;
+    let (bad_url, bad_h) =
+        spawn_mock(Router::new().route("/chat/completions", post(fail_handler))).await;
+    let (anth_url, anth_h) =
+        spawn_mock(Router::new().route("/v1/messages", post(anthropic_json_handler))).await;
     let cfg = config_template(&good_url, &bad_url, &anth_url, POLICIES);
     std::fs::write(dir.join("config.toml"), &cfg).unwrap();
     let base = start_proxy(&dir).await;
@@ -481,13 +464,10 @@ async fn admin_override_pins_provider() {
             })),
     )
     .await;
-    let (bad_url, bad_h) = spawn_mock(Router::new().route("/chat/completions", post(fail_handler)))
-        .await;
-    let (anth_url, anth_h) = spawn_mock(
-        Router::new()
-            .route("/v1/messages", post(anthropic_json_handler)),
-    )
-    .await;
+    let (bad_url, bad_h) =
+        spawn_mock(Router::new().route("/chat/completions", post(fail_handler))).await;
+    let (anth_url, anth_h) =
+        spawn_mock(Router::new().route("/v1/messages", post(anthropic_json_handler))).await;
     let cfg = config_template(&good_url, &bad_url, &anth_url, POLICIES);
     std::fs::write(dir.join("config.toml"), &cfg).unwrap();
     let base = start_proxy(&dir).await;
@@ -520,7 +500,11 @@ async fn admin_override_pins_provider() {
     assert_eq!(v["model"], "pinned-model");
 
     // /admin/routes shows the override first.
-    let resp = client().get(format!("{base}/admin/routes")).send().await.unwrap();
+    let resp = client()
+        .get(format!("{base}/admin/routes"))
+        .send()
+        .await
+        .unwrap();
     let v: Value = resp.json().await.unwrap();
     let alias_row = v["policies"]
         .as_array()
@@ -563,13 +547,10 @@ async fn unknown_model_uses_default_provider() {
             })),
     )
     .await;
-    let (bad_url, bad_h) = spawn_mock(Router::new().route("/chat/completions", post(fail_handler)))
-        .await;
-    let (anth_url, anth_h) = spawn_mock(
-        Router::new()
-            .route("/v1/messages", post(anthropic_json_handler)),
-    )
-    .await;
+    let (bad_url, bad_h) =
+        spawn_mock(Router::new().route("/chat/completions", post(fail_handler))).await;
+    let (anth_url, anth_h) =
+        spawn_mock(Router::new().route("/v1/messages", post(anthropic_json_handler))).await;
     let cfg = config_template(&good_url, &bad_url, &anth_url, POLICIES);
     std::fs::write(dir.join("config.toml"), &cfg).unwrap();
     let base = start_proxy(&dir).await;
@@ -601,18 +582,19 @@ async fn models_listing_and_health() {
             })),
     )
     .await;
-    let (bad_url, bad_h) = spawn_mock(Router::new().route("/chat/completions", post(fail_handler)))
-        .await;
-    let (anth_url, anth_h) = spawn_mock(
-        Router::new()
-            .route("/v1/messages", post(anthropic_json_handler)),
-    )
-    .await;
+    let (bad_url, bad_h) =
+        spawn_mock(Router::new().route("/chat/completions", post(fail_handler))).await;
+    let (anth_url, anth_h) =
+        spawn_mock(Router::new().route("/v1/messages", post(anthropic_json_handler))).await;
     let cfg = config_template(&good_url, &bad_url, &anth_url, POLICIES);
     std::fs::write(dir.join("config.toml"), &cfg).unwrap();
     let base = start_proxy(&dir).await;
 
-    let resp = client().get(format!("{base}/v1/models")).send().await.unwrap();
+    let resp = client()
+        .get(format!("{base}/v1/models"))
+        .send()
+        .await
+        .unwrap();
     let v: Value = resp.json().await.unwrap();
     let ids: Vec<&str> = v["data"]
         .as_array()
