@@ -25,7 +25,7 @@ modelmux (127.0.0.1:8787)
 - **Time-window rules.** DeepSeek rates are 2x during its peak windows
   (01:00–04:00 and 06:00–10:00 UTC, Mon–Fri). A policy can avoid those
   windows and fall to a subscription model. Windows carry a day-of-week
-  list and a price multiplier.
+  list, a price multiplier, and an IANA timezone.
 - **Failover.** On connect errors, timeouts, 429 and 5xx (before the first
   byte), modelmux tries the next candidate.
 - **Local switching.** Pin any alias to a local server at runtime with one
@@ -77,9 +77,9 @@ See `config.example.toml` for a complete annotated example.
 | `[server] api_key` | Optional. Require `Authorization: Bearer <key>`. |
 | `[server] usage_log` | JSONL path for per-request accounting. |
 | `[server] default_provider` | Passthrough provider for unknown model names. |
-| `[server] window_timezone` | `utc` or `local` for window evaluation. |
+| `[server] window_timezone` | Default zone for window evaluation: `utc`, `local`, or an IANA zone (e.g. `Europe/Brussels`). |
 | `[server] default_max_tokens` | max_tokens for Anthropic providers when clients omit it. |
-| `[windows.<name>]` | `start`/`end` (`HH:MM`), optional `days`, `mult` (price factor). |
+| `[windows.<name>]` | `start`/`end` (`HH:MM`), optional `days`, `mult` (price factor), `tz` (IANA zone; default: `server.window_timezone`). |
 | `[providers.<name>]` | `kind` (`openai`\|`anthropic`), `base_url`, `api_key_env`, `price_windows`, per-model prices. |
 | `[policies.<alias>]` | Ordered `candidates`; each has `provider`, `model`, optional `avoid_windows`, `only_windows`. |
 
@@ -91,13 +91,40 @@ Routing order for a request:
 
 The first live candidate is used. Failures fall through the same list.
 
-### Windows and DeepSeek pricing
+### Windows, timezones and DeepSeek pricing
 
 The official DeepSeek rate card (checked 2026-11-05): off-peak rates are
 half of peak. Peak = 01:00–04:00 and 06:00–10:00 UTC, Mon–Fri, excluding
 Chinese public holidays. `config.example.toml` encodes these as two windows
 with `mult = 2.0`. The cost logger multiplies configured per-model prices
 by the active windows, so `usage.jsonl` shows real peak vs off-peak spend.
+
+Timezones are IANA names (`Europe/Brussels`, `UTC`, …), plus the shorthands
+`utc` and `local` (system clock). Each window evaluates in its own `tz`;
+without one, it uses `server.window_timezone`. Two conventions:
+
+- `start == end` means the full 24h day (e.g. `00:00`/`00:00` is always
+  active; `00:00`–`23:59` would leave the last minute free).
+- Windows may cross midnight (`start > end` wraps).
+
+Why per-window timezones: a local-time window in a DST zone slides one hour
+twice a year. DeepSeek's schedule is defined in UTC, so those windows pin
+`tz = "UTC"` and stay exact year-round, while `server.window_timezone`
+defaults to `Europe/Brussels` for your own local windows.
+
+Brussels equivalents of the DeepSeek peak windows (computed with
+`python3`/`zoneinfo`, 2026-11-05):
+
+| Window (UTC) | Winter (CET, UTC+1) | Summer (CEST, UTC+2) |
+|---|---|---|
+| 01:00–04:00 | 02:00–05:00 | 03:00–06:00 |
+| 06:00–10:00 | 07:00–11:00 | 08:00–12:00 |
+
+"Mon–Fri" is interpreted as UTC days (the official wording and OpenRouter's
+machine-readable schedule both read that way). The Chinese public-holiday
+exclusion is not modeled: on a Chinese holiday the real rate is off-peak,
+so your peak-day routing may over-swap to the subscription for a few hours
+at most.
 
 ### Switching a workload to local
 

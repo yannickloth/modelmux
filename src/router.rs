@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::config::{CandidateCfg, Config, OverrideEntry, ProviderCfg};
-use crate::time_windows::{now_minutes, window_active_at};
+use crate::time_windows::window_active;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Candidate {
@@ -12,20 +12,21 @@ pub struct Candidate {
     pub via_override: bool,
 }
 
-/// True when the candidate's window conditions allow it right now
-/// (for the given minute).
-pub fn candidate_active(cfg: &Config, c: &CandidateCfg, tz: &str, now_min: u32) -> bool {
+/// True when the candidate's window conditions allow it right now.
+/// Each window is evaluated in its own timezone (window `tz`, else `tz`).
+pub fn candidate_active(cfg: &Config, c: &CandidateCfg, tz: &str) -> bool {
     for name in &c.avoid_windows {
         if let Some(w) = cfg.windows.get(name) {
-            if window_active_at(w, tz, now_min) {
+            if window_active(w, tz) {
                 return false;
             }
         }
     }
     if !c.only_windows.is_empty() {
-        let any = c.only_windows.iter().any(
-            |name| matches!(cfg.windows.get(name), Some(w) if window_active_at(w, tz, now_min)),
-        );
+        let any = c
+            .only_windows
+            .iter()
+            .any(|name| matches!(cfg.windows.get(name), Some(w) if window_active(w, tz)));
         if !any {
             return false;
         }
@@ -55,7 +56,6 @@ pub fn resolve(
     alias: &str,
     tz: &str,
 ) -> Vec<Candidate> {
-    let now = now_minutes(tz);
     let mut out: Vec<Candidate> = vec![];
 
     if let Some(ov) = overrides.get(alias) {
@@ -70,7 +70,7 @@ pub fn resolve(
 
     if let Some(pol) = cfg.policies.get(alias) {
         for c in &pol.candidates {
-            if !candidate_active(cfg, c, tz, now) {
+            if !candidate_active(cfg, c, tz) {
                 continue;
             }
             let Some(p) = cfg.providers.get(&c.provider) else {
@@ -157,15 +157,16 @@ mod tests {
             end: end.into(),
             mult: 1.0,
             days: vec![],
+            tz: None,
         }
     }
 
     #[test]
     fn avoid_window_skips_candidate() {
-        // A window that always covers the current minute is not possible to
-        // guarantee, so use a full-day window and check both branches via
-        // candidate_active directly at a fixed minute.
-        let w = window("00:00", "23:59");
+        // start == end is the full-day convention: the window is active at
+        // every minute, so "a" is always avoided and "b" is the only
+        // survivor regardless of the real clock.
+        let w = window("00:00", "00:00");
         let mut windows = HashMap::new();
         windows.insert("all".into(), w);
         let cfg = cfg_with(
@@ -187,10 +188,7 @@ mod tests {
                 ],
             },
         );
-        // At 12:00 the "all" window is active -> only b remains.
         let cands = resolve(&cfg, &HashMap::new(), "alias", "utc");
-        // 12:00 is inside 00:00-23:59 for any time of day, so b is the only
-        // survivor regardless of the real clock.
         assert_eq!(cands.len(), 1);
         assert_eq!(cands[0].provider, "b");
     }
@@ -239,31 +237,60 @@ mod tests {
 
     #[test]
     fn only_windows_requires_activity() {
+        // Build a full-day window whose day filter matches today's weekday
+        // (deterministic against the clock) and one that excludes it.
+        let wd = crate::time_windows::now_weekday_in("utc");
+        let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        let today = names[(wd - 1) as usize];
+        let other = names[(wd as usize) % 7]; // different index
+
         let mut windows = HashMap::new();
-        // 00:00-00:01 covers minute 0 only.
-        windows.insert("tiny".into(), window("00:00", "00:01"));
+        let w_match = crate::config::WindowCfg {
+            start: "00:00".into(),
+            end: "23:59".into(),
+            mult: 1.0,
+            days: vec![today.into()],
+            tz: Some("utc".into()),
+        };
+        let w_other = crate::config::WindowCfg {
+            start: "00:00".into(),
+            end: "23:59".into(),
+            mult: 1.0,
+            days: vec![other.into()],
+            tz: Some("utc".into()),
+        };
+        windows.insert("match".into(), w_match);
+        windows.insert("other".into(), w_other);
         let cfg = cfg_with(
             windows,
             PolicyCfg {
-                candidates: vec![CandidateCfg {
-                    provider: "a".into(),
-                    model: "m".into(),
-                    avoid_windows: vec![],
-                    only_windows: vec!["tiny".into()],
-                }],
+                candidates: vec![
+                    CandidateCfg {
+                        provider: "a".into(),
+                        model: "m".into(),
+                        avoid_windows: vec!["other".into()],
+                        only_windows: vec!["match".into()],
+                    },
+                    CandidateCfg {
+                        provider: "a".into(),
+                        model: "m2".into(),
+                        avoid_windows: vec!["match".into()],
+                        only_windows: vec![],
+                    },
+                ],
             },
         );
+        // today's window is active, "other" is not: candidate 0 passes,
+        // candidate 1 is avoided.
         assert!(candidate_active(
             &cfg,
             &cfg.policies["alias"].candidates[0],
-            "utc",
-            0
+            "utc"
         ));
         assert!(!candidate_active(
             &cfg,
-            &cfg.policies["alias"].candidates[0],
-            "utc",
-            300
+            &cfg.policies["alias"].candidates[1],
+            "utc"
         ));
     }
 }

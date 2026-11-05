@@ -13,7 +13,7 @@ use crate::api::{json_err, json_ok};
 use crate::config::OverrideEntry;
 use crate::router;
 use crate::state::{save_overrides, AppState};
-use crate::time_windows::now_minutes;
+use crate::time_windows::{now_minutes_in, window_active};
 
 /// GET /admin/routes — what each alias resolves to right now.
 pub(crate) async fn routes(State(state): State<Arc<AppState>>) -> Response {
@@ -21,7 +21,7 @@ pub(crate) async fn routes(State(state): State<Arc<AppState>>) -> Response {
     let cfg = state.cfg.read().await.clone();
     let overrides = state.overrides.read().await.clone();
     let tz = cfg.server.window_timezone.clone();
-    let now = now_minutes(&tz);
+    let now = now_minutes_in(&tz);
 
     let active_windows: Vec<Value> = cfg
         .windows
@@ -33,7 +33,8 @@ pub(crate) async fn routes(State(state): State<Arc<AppState>>) -> Response {
                 "end": w.end,
                 "mult": w.mult,
                 "days": w.days,
-                "active_now": crate::time_windows::window_active_at(w, &tz, now),
+                "tz": w.tz.clone().unwrap_or_else(|| tz.clone()),
+                "active_now": window_active(w, &tz),
             })
         })
         .collect();
@@ -54,7 +55,7 @@ pub(crate) async fn routes(State(state): State<Arc<AppState>>) -> Response {
             cands.push(json!({
                 "provider": c.provider,
                 "model": c.model,
-                "active": router::candidate_active(&cfg, c, &tz, now),
+                "active": router::candidate_active(&cfg, c, &tz),
                 "avoid_windows": c.avoid_windows,
                 "only_windows": c.only_windows,
             }));

@@ -12,8 +12,9 @@ listen = "127.0.0.1:8787"
 usage_log = "usage.jsonl"
 # Model names that match no policy pass through to this provider unchanged.
 default_provider = "deepseek"
-# Timezone used to evaluate windows: "utc" or "local".
-window_timezone = "utc"
+# Default timezone for window evaluation: "utc", "local", or any IANA zone
+# (e.g. "Europe/Brussels"). A window's own `tz` key overrides this.
+window_timezone = "Europe/Brussels"
 # Sent to Anthropic-format providers when a client omits max_tokens.
 default_max_tokens = 8192
 
@@ -23,6 +24,16 @@ default_max_tokens = 8192
 # DeepSeek peak pricing (official rate card, checked 2026-11-05): rates are
 # exactly 2x during 01:00-04:00 and 06:00-10:00 UTC, Monday-Friday,
 # excluding Chinese public holidays. Everything else is off-peak.
+#
+# The peak windows are defined in UTC by DeepSeek, so they pin tz = "UTC".
+# Do not convert them to Brussels time: Brussels is CET (UTC+1) in winter
+# and CEST (UTC+2) in summer, so a fixed local-time window would drift one
+# hour twice a year. (Brussels equivalents: night 02:00-05:00 winter /
+# 03:00-06:00 summer; morning 07:00-11:00 winter / 08:00-12:00 summer.)
+#
+# "Mon-Fri" is interpreted as UTC days (the official wording and
+# OpenRouter's schedule both read that way); the Chinese-holiday exclusion
+# is not modeled.
 # ---------------------------------------------------------------------------
 
 [windows.ds_peak_night]
@@ -30,12 +41,14 @@ start = "01:00"
 end = "04:00"
 mult = 2.0
 days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+tz = "UTC"
 
 [windows.ds_peak_morning]
 start = "06:00"
 end = "10:00"
 mult = 2.0
 days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+tz = "UTC"
 
 # ---------------------------------------------------------------------------
 # Providers

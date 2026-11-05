@@ -15,13 +15,14 @@ use crate::config::{Config, ProviderKind};
 use crate::router::{self, Candidate};
 use crate::sse::{self, SseParser};
 use crate::state::AppState;
-use crate::time_windows::{now_minutes, window_active_at};
+use crate::time_windows::window_active;
 use crate::upstream::{self, Attempt};
 use crate::usage::Record;
 use crate::VERSION;
 
 /// Cost of one request in USD, using the provider's configured per-model
-/// prices and the active price windows at the current time.
+/// prices and the active price windows at the current time (each window in
+/// its own timezone).
 pub fn cost_usd(
     cfg: &Config,
     provider_id: &str,
@@ -35,11 +36,10 @@ pub fn cost_usd(
     };
     let p = cfg.providers.get(provider_id)?;
     let price = p.models.get(model)?;
-    let now = now_minutes(tz);
     let mut mult = 1.0f64;
     for wname in &p.price_windows {
         if let Some(w) = cfg.windows.get(wname) {
-            if window_active_at(w, tz, now) {
+            if window_active(w, tz) {
                 mult *= w.mult;
             }
         }

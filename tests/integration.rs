@@ -168,8 +168,9 @@ default_provider = "good"
 window_timezone = "utc"
 
 [windows.always]
+# start == end is the full-day convention (all 1440 minutes).
 start = "00:00"
-end = "23:59"
+end = "00:00"
 mult = 2.0
 
 [providers.good]

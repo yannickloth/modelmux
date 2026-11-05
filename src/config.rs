@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::time_windows::{is_day_name, parse_hhmm};
+use crate::time_windows::{is_day_name, is_valid_tz, parse_hhmm};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -55,7 +55,7 @@ fn default_window_tz() -> String {
 /// (1.0 = no price effect). An empty `days` list means every day.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WindowCfg {
-    /// "HH:MM" (24h, no timezone suffix — see `server.window_timezone`).
+    /// "HH:MM" (24h) in the window's timezone.
     pub start: String,
     pub end: String,
     #[serde(default = "default_mult", deserialize_with = "de_f64")]
@@ -63,6 +63,12 @@ pub struct WindowCfg {
     /// ["Mon".."Sun"]; full names accepted.
     #[serde(default)]
     pub days: Vec<String>,
+    /// IANA timezone for this window (e.g. "Europe/Brussels" or "UTC").
+    /// Defaults to `server.window_timezone`. Pin `tz = "UTC"` for schedules
+    /// that are defined in UTC — local-time windows in a DST zone drift an
+    /// hour twice a year.
+    #[serde(default)]
+    pub tz: Option<String>,
 }
 
 fn default_mult() -> f64 {
@@ -190,6 +196,14 @@ impl Config {
                     w.end
                 ));
             }
+            if let Some(tz) = &w.tz {
+                if !is_valid_tz(tz) {
+                    errs.push(format!(
+                        "window '{name}' has unknown timezone '{tz}' \
+                         (want \"utc\", \"local\", or an IANA name)"
+                    ));
+                }
+            }
             for d in &w.days {
                 if !is_day_name(d) {
                     errs.push(format!(
@@ -198,9 +212,10 @@ impl Config {
                 }
             }
         }
-        if !matches!(self.server.window_timezone.as_str(), "utc" | "local") {
+        if !is_valid_tz(&self.server.window_timezone) {
             errs.push(format!(
-                "server.window_timezone must be \"utc\" or \"local\", got '{}'",
+                "server.window_timezone must be \"utc\", \"local\", or an IANA zone \
+                 (e.g. \"Europe/Brussels\"), got '{}'",
                 self.server.window_timezone
             ));
         }
