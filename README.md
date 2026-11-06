@@ -3,6 +3,9 @@
 Rule-based LLM routing proxy. One OpenAI-compatible endpoint for your agents.
 Many backends behind it.
 
+Agents working in this repo: read `AGENTS.md` (commands, invariants,
+hard-won facts) and `SPEC.md` (the behavior contract).
+
 modelmux sits between your coding agents and your model providers:
 
 ```
