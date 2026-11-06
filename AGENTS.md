@@ -158,6 +158,33 @@ pkill -x modelmux
 | `systemd/modelmux.service` | systemd user unit template |
 | `usage.jsonl`, `overrides.json` | runtime artifacts, gitignored; never commit |
 
+## Agent plugins (opencode.json)
+
+`opencode.json` enables 11 plugins from the sibling repo
+`../llm-harness-plugins/`. The array order is a contract, not decoration —
+it is documented in that repo's README (load-order table) and probed by its
+`shared/canary_preflight.sh`. Hard constraints for the set in use:
+
+- `guardrail-chain` before `session-lifecycle` before `agentmem`
+- `agentmem` before `tier-router` (reads its `MEMORY.md`) and
+  `agentinsights` (creates the `.agentmem/` root)
+- `context-editing` after `session-lifecycle` and `datetime-inject`
+- `general-skills` last among skill providers; `systemone`,
+  `codify-first`, `context-editing` load after it
+
+After any change to the array, verify (exit 0 = all loaded, in config
+order; exit 1 = fail closed, do not work on):
+
+```sh
+bash ~/code/llm-harness-plugins/shared/canary_preflight.sh opencode ./opencode.json
+```
+
+Not enabled, on purpose: `ivp` (refactoring methodology, not requested for
+this project), `rust-toolkit` (its `rust-check` tool runs bare `cargo`,
+which does not exist on this host — `nix develop -c cargo ...` is the only
+working toolchain path), `local-decide` (dormant until `laya-mcp` runs),
+and the format toolkits (typst/latex/js/c/python/kotlin/graphics).
+
 ## Conventions
 
 - Rust 2021, stable. Keep clippy + rustfmt clean on every change.

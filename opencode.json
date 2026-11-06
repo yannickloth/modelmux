@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "../llm-harness-plugins/guardrail-chain/opencode",
+    "../llm-harness-plugins/session-lifecycle/opencode",
+    "../llm-harness-plugins/agentmem/opencode",
+    "../llm-harness-plugins/tier-router/opencode",
+    "../llm-harness-plugins/datetime-inject/opencode",
+    "../llm-harness-plugins/offpeak-nudge/opencode",
+    "../llm-harness-plugins/agentinsights/opencode",
+    "../llm-harness-plugins/general-skills/opencode",
+    "../llm-harness-plugins/systemone/opencode",
+    "../llm-harness-plugins/codify-first/opencode",
+    "../llm-harness-plugins/context-editing/opencode"
+  ]
+}
