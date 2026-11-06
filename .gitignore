@@ -2,3 +2,6 @@
 usage.jsonl
 overrides.json
 *.tmp
+# Plugin runtime state (agentmem, context-editing) — local only, not shared.
+.agentmem/
+.context-editing/
