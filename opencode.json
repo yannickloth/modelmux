@@ -12,5 +12,150 @@
     "../llm-harness-plugins/systemone/opencode",
     "../llm-harness-plugins/codify-first/opencode",
     "../llm-harness-plugins/context-editing/opencode"
-  ]
+  ],
+  "instructions": [
+    "../llm-harness-plugins/agentmem/prompts/agent-prompt.md"
+  ],
+  "agent": {
+    "bibliography-auditor": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/bibliography-auditor.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "allow",
+        "edit": "deny",
+        "task": "deny"
+      }
+    },
+    "citation-fidelity-auditor": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/citation-fidelity-auditor.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "deny",
+        "edit": "deny",
+        "task": "deny"
+      }
+    },
+    "config-auditor": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/config-auditor.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "deny",
+        "edit": "deny",
+        "task": "deny"
+      }
+    },
+    "logic-auditor": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/logic-auditor.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "deny",
+        "edit": "deny",
+        "task": "deny"
+      }
+    },
+    "math-verifier": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/math-verifier.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "allow",
+        "edit": "deny",
+        "task": "deny"
+      }
+    },
+    "redundancy-auditor": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/redundancy-auditor.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "deny",
+        "edit": "deny",
+        "task": "deny"
+      }
+    },
+    "ste-100-auditor": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/ste-100-auditor.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "deny",
+        "edit": "deny",
+        "task": "deny"
+      }
+    },
+    "style-auditor": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/style-auditor.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "deny",
+        "edit": "deny",
+        "task": "deny"
+      }
+    },
+    "style-naturalizer": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/style-naturalizer.md}",
+      "permission": {
+        "read": "allow",
+        "edit": "allow",
+        "glob": "deny",
+        "grep": "deny",
+        "bash": "deny",
+        "task": "deny"
+      }
+    },
+    "xref-checker": {
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "thinking": { "type": "enabled" },
+      "prompt": "{file:../llm-harness-plugins/general-skills/agents/xref-checker.md}",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "allow",
+        "edit": "deny",
+        "task": "deny"
+      }
+    }
+  }
 }

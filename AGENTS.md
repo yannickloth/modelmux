@@ -185,6 +185,23 @@ which does not exist on this host — `nix develop -c cargo ...` is the only
 working toolchain path), `local-decide` (dormant until `laya-mcp` runs),
 and the format toolkits (typst/latex/js/c/python/kotlin/graphics).
 
+Model pins: ten general-skills audit agents declare `model: sonnet` in
+their frontmatter, but `shared/agents.ts` DROPS bare model aliases at
+registration (only `provider/model` survives), so they would fall back to
+the session default (a 1.5B local model). The `agent` block pins them to
+`deepseek/deepseek-v4-pro` (same precedent as the IVP pins in
+nixos-config). A repo-declared agent REPLACES the plugin's registration
+(`registerAgentDirV2` skips already-declared ids), so each pin carries the
+full agent: `prompt` via `{file:...}`, `mode`, and the frontmatter's
+permission block. `proof-soundness-auditor` and `translation-auditor`
+keep their resolvable frontmatter models and need no pin.
+
+`instructions` injects `agentmem/prompts/agent-prompt.md` — the memory
+system's contract for the main agent (design doc: "injected into the build
+agent's context"; the repo's sample config wires it the same way).
+Verified live: a headless probe on the local default model answers
+"12000", the token ceiling stated only in that file.
+
 ## Conventions
 
 - Rust 2021, stable. Keep clippy + rustfmt clean on every change.
